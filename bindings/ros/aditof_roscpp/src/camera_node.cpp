@@ -79,6 +79,8 @@ void callback(aditof_roscpp::Aditof_roscppConfig &config, uint32_t level,
     }*/
         setIrGammaCorrection(camera, config.ir_gamma);
 
+        // This is the code sequence were the format is changed
+        // Need to update the camera.launch file and set the depth_data_format to 0
         switch (config.depth_data_format) { //MONO16 - 0, RGBA8 - 1
         case 0:
             depthImgMsg->setDepthDataFormat(0);
@@ -137,8 +139,12 @@ int main(int argc, char **argv) {
         ROS_ASSERT_MSG(rgb_img_pubisher, "creating rgb_img_pubisher failed");
     }
 
+    // Changed node name
+    // The depthimage_to_laserscan node expect this standard name "camera_info"
+    // So the camera calibration info is expected on topic:aditof_roscpp/camera_info
+    // because of the depth topic aditof_roscpp/aditof_depth
     ros::Publisher camera_info_pubisher =
-        nHandle.advertise<sensor_msgs::CameraInfo>("aditof_camera_info", 5);
+        nHandle.advertise<sensor_msgs::CameraInfo>("camera_info", 5); 
     ROS_ASSERT_MSG(camera_info_pubisher,
                    "creating camera_info_pubisher failed");
 
