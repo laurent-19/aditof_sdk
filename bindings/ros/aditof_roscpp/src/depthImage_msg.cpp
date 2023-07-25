@@ -38,8 +38,8 @@ DepthImageMsg::DepthImageMsg(const std::shared_ptr<aditof::Camera> &camera,
                              aditof::Frame *frame, std::string encoding,
                              ros::Time tStamp) {
     imgEncoding = encoding;
+    m_depthDataFormat = 1; //RGBA8, overwitten by depth_data_format config
     FrameDataToMsg(camera, frame, tStamp);
-    m_depthDataFormat = 1; //RGBA8
 }
 
 void DepthImageMsg::FrameDataToMsg(const std::shared_ptr<Camera> &camera,
@@ -90,7 +90,11 @@ void DepthImageMsg::setDataMembers(const std::shared_ptr<Camera> &camera,
             ROS_ERROR("Image encoding invalid or not available");
     } else if (m_depthDataFormat == 0) //MONO16
     {
-        if (msg.encoding.compare(sensor_msgs::image_encodings::MONO16) == 0) {
+        // Image encodings MONO16 and TYPE_16UC1 are equivalent
+        // Depth_to_laserscan package uses the TYPE_16UC1, 
+        // as well as other common ROS libraries
+        if ((msg.encoding.compare(sensor_msgs::image_encodings::TYPE_16UC1) == 0) ||
+            (msg.encoding.compare(sensor_msgs::image_encodings::MONO16) == 0)){
             std::vector<uint16_t> depthData(frameData,
                                             frameData + msg.width * msg.height);
             auto min_range =
@@ -168,7 +172,7 @@ void DepthImageMsg::publishMsg(const ros::Publisher &pub) { pub.publish(msg); }
 void DepthImageMsg::setDepthDataFormat(int value) {
     m_depthDataFormat = value;
     imgEncoding = (value == 1) ? sensor_msgs::image_encodings::RGBA8
-                               : sensor_msgs::image_encodings::MONO16;
+                               : sensor_msgs::image_encodings::TYPE_16UC1; // TYPE_16UC1 = MONO16
 }
 
 int DepthImageMsg::getDepthDataFormat() { return (m_depthDataFormat); }
