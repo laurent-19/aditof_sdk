@@ -57,7 +57,11 @@ void PointCloud2Msg::setMetadataMembers(int width, int height,
                                   "intensity", 1,
                                   sensor_msgs::PointField::UINT16);
     msg.header.stamp = tStamp;
-    msg.header.frame_id = "base_link";
+    // point cloud projected along the Z axis 
+    // most robot move forward on positive X-axis
+    // use a different frame for the pcl data, rotate the view for the robot to see pcl in front 
+    // see laser_scan launch file for example
+    msg.header.frame_id = "pointcloud";
 
     msg.width = width;
     msg.height = height;
