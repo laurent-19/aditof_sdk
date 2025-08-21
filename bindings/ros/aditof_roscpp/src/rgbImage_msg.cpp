@@ -30,7 +30,46 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "rgbImage_msg.h"
+#include <algorithm>
+#include <cmath>
 using namespace aditof;
+
+// Fast Bayer (BGGR) to RGB8 conversion using simple nearest-neighbor, minimal branching
+void bayerToRGB(const uint16_t* bayer, uint8_t* rgb, int w, int h) {
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            int idx = y * w + x;
+            int ridx = idx * 3;
+            uint16_t c = bayer[idx];
+            uint8_t r = 0, g = 0, b = 0;
+
+            bool evenRow = (y & 1) == 0;
+            bool evenCol = (x & 1) == 0;
+
+            if (evenRow && evenCol) { // Blue
+                b = c >> 8;
+                g = ((x + 1 < w ? bayer[idx + 1] : c) + (y + 1 < h ? bayer[idx + w] : c)) >> 9;
+                r = (x + 1 < w && y + 1 < h) ? (bayer[idx + w + 1] >> 8) : 0;
+            } else if (evenRow && !evenCol) { // Green (on blue row)
+                g = c >> 8;
+                b = (x > 0 ? bayer[idx - 1] : c) >> 8;
+                r = (y + 1 < h ? bayer[idx + w] : c) >> 8;
+            } else if (!evenRow && evenCol) { // Green (on red row)
+                g = c >> 8;
+                r = (x > 0 ? bayer[idx - 1] : c) >> 8;
+                b = (y > 0 ? bayer[idx - w] : c) >> 8;
+            } else { // Red
+                r = c >> 8;
+                g = ((x > 0 ? bayer[idx - 1] : c) + (y > 0 ? bayer[idx - w] : c)) >> 9;
+                b = (x > 0 && y > 0) ? (bayer[idx - w - 1] >> 8) : 0;
+            }
+
+            rgb[ridx] = r;
+            rgb[ridx + 1] = g;
+            rgb[ridx + 2] = b;
+        }
+    }
+}
 
 RgbImageMsg::RgbImageMsg() {}
 
@@ -46,25 +85,24 @@ void RgbImageMsg::FrameDataToMsg(const std::shared_ptr<Camera> &camera,
     FrameDetails fDetails;
     frame->getDetails(fDetails);
 
-    setMetadataMembers(
-
-        fDetails.rgbWidth, fDetails.rgbHeight,
-        tStamp); // to make more generic, based on selected resolution on camera
-
     uint16_t *frameData = getFrameData(frame, aditof::FrameDataType::RGB);
-    rgbFrameEnhancement(frameData, msg.width, msg.height);
     if (!frameData) {
-        LOG(ERROR) << "getFrameData call failed";
         return;
     }
 
+    if (fDetails.rgbWidth <= 0 || fDetails.rgbHeight <= 0) {
+        return;
+    }
+    
+    rgbFrameEnhancement(frameData, fDetails.rgbWidth, fDetails.rgbHeight);
+
+    setMetadataMembers(fDetails.rgbWidth, fDetails.rgbHeight, tStamp);
     setDataMembers(camera, frameData);
 }
 
 void RgbImageMsg::setMetadataMembers(int width, int height, ros::Time tStamp) {
     msg.header.stamp = tStamp;
     msg.header.frame_id = "aditof_rgb_img";
-
     msg.width = width;
     msg.height = height;
     msg.encoding = imgEncoding;
@@ -73,17 +111,35 @@ void RgbImageMsg::setMetadataMembers(int width, int height, ros::Time tStamp) {
     int pixelByteCnt = sensor_msgs::image_encodings::bitDepth(imgEncoding) / 8 *
                        sensor_msgs::image_encodings::numChannels(imgEncoding);
     msg.step = width * pixelByteCnt;
-
     msg.data.resize(msg.step * height);
 }
 
 void RgbImageMsg::setDataMembers(const std::shared_ptr<Camera> &camera,
                                  uint16_t *frameData) {
-    if (msg.encoding.compare(sensor_msgs::image_encodings::BAYER_BGGR16) == 0) {
-        uint8_t *msgDataPtr = msg.data.data();
-        std::memcpy(msgDataPtr, frameData, msg.step * msg.height);
-    } else
+    if (msg.encoding.compare(sensor_msgs::image_encodings::RGB8) == 0) {
+        // Convert Bayer 16-bit data to RGB8
+        uint16_t minVal = *std::min_element(frameData, frameData + msg.width * msg.height);
+        uint16_t maxVal = *std::max_element(frameData, frameData + msg.width * msg.height);
+        
+        // Apply basic enhancement to improve contrast
+        uint16_t *enhancedData = new uint16_t[msg.width * msg.height];
+        float scale = (maxVal > minVal) ? 65535.0f / (maxVal - minVal) : 1.0f;
+        
+        for (size_t i = 0; i < static_cast<size_t>(msg.width) * static_cast<size_t>(msg.height); i++) {
+            int enhanced = (frameData[i] - minVal) * scale;
+            enhancedData[i] = std::min(65535, std::max(0, enhanced));
+        }
+        
+        // Convert Bayer to RGB
+        bayerToRGB(enhancedData, msg.data.data(), msg.width, msg.height);
+        delete[] enhancedData;
+    }
+    else if (msg.encoding.compare(sensor_msgs::image_encodings::BAYER_BGGR16) == 0) {
+        std::memcpy(msg.data.data(), frameData, msg.width * msg.height * sizeof(uint16_t));
+    }
+    else {
         ROS_ERROR("Image encoding invalid or not available");
+    }
 }
 
 void RgbImageMsg::publishMsg(const ros::Publisher &pub) { pub.publish(msg); }

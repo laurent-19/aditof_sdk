@@ -46,7 +46,7 @@ MessageFactory::create(const std::shared_ptr<aditof::Camera> &camera,
                               sensor_msgs::image_encodings::MONO16, tStamp);
     case MessageType::sensor_msgs_RgbImage:
         return new RgbImageMsg(
-            camera, frame, sensor_msgs::image_encodings::BAYER_BGGR16, tStamp);
+            camera, frame, sensor_msgs::image_encodings::RGB8, tStamp);
     case MessageType::sensor_msgs_CameraInfo:
         return new CameraInfoMsg(camera, frame, tStamp);
     }
