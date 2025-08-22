@@ -27,6 +27,167 @@ Platform details : [![Hardware](https://img.shields.io/badge/hardware-wiki-green
 | ------------- | ----------- | ----------- |
 | [User Guide](https://wiki.analog.com/resources/eval/user-guides/ad-3dsmartcam1-prz?rev=1637140560#getting_your_system_up_and_running) <br> [Build Instructions](doc/3dsmartcam1/build_instructions.md) | [![Build Status](https://dev.azure.com/AnalogDevices/3DToF/_apis/build/status/analogdevicesinc.aditof_sdk?branchName=master)](https://dev.azure.com/AnalogDevices/3DToF/_build?view=runs&branchFilter=262) |  [![sdk release](https://img.shields.io/badge/release-sdk-blue.svg)](https://github.com/analogdevicesinc/aditof_sdk/releases/latest) 
 
+#### Quick Setup
+
+To get your AD-3DSMARTCAM1-PRZ camera up and running, follow these steps:
+
+1. **Power Up**  
+    Plug in the camera. The blue LED on the top right corner will light up, and the system will boot Linux OS (about 30 seconds).
+
+2. **Connect to the Camera**  
+    - **WiFi:**
+        The camera exposes a WiFi AP named `ADI_Smart_Camera` (password: `ADI_Smart_Camera`). The camera's IP will be `172.16.1.1`.
+
+        ![WiFi Access Point Setup](./doc/3dsmartcam1/cam-setup/wifi.png)
+
+        When the network is connected, you can connect to the camera over SSH. The password is `analog`:
+
+        ```sh
+        ssh analog@172.16.1.1
+        ```
+
+        ![WiFi WLAN SSH connect](./doc/3dsmartcam1/cam-setup/ssh-connect.png)
+
+    - **Ethernet:**  
+        Connect the camera to your local network using an Ethernet cable. The camera will obtain an IP address via DHCP. To find the assigned IP, first connect to the camera over WiFi, then run `ifconfig` and look for the `eth0` interface:
+
+        ![Ethernet IP Check](./doc/3dsmartcam1/cam-setup/ifconfig.png)
+
+        Use SSH to connect to the camera using the Ethernet IP address (password: `analog`):
+
+        ```sh
+        ssh analog@<eth0_camera_ip>
+        ```
+        > **Note:** After connecting via Ethernet, you can disconnect from the `ADI_Smart_Camera` WiFi and use your local network for internet connectivity.
+
+3. **Update the Software**  
+    Ensure the camera is connected to the internet (preferably via Ethernet) and that the system date is correct. The camera uses the latest release of the Analog Devices ToF SDK (v3.1.0), available at [ADI ToF SDK v3.1.0](https://github.com/analogdevicesinc/aditof_sdk/tree/v3.1.0). 
+    
+    This demo uses a forked repository ([laurent-19/aditof_sdk](https://github.com/laurent-19/aditof_sdk/tree/v3.1.0)), with a configured remote named `laur_dev`.
+
+    To list all configured git remotes, run:
+
+    ```sh
+    cd ~/Workspace/aditof_sdk
+    git remote -v
+    ```
+
+    To update the software from the `laur_dev` remote, run:
+
+    ```sh
+    cd ~/Workspace/aditof_sdk
+    git fetch laur_dev
+    git pull laur_dev v3.1.0
+    ```
+
+    To update from the original ADI remote, run:
+
+    ```sh
+    cd ~/Workspace/aditof_sdk
+    git checkout .
+    git fetch origin
+    git pull origin
+    cd scripts/3dsmartcam1/
+    ./sdk_update.sh
+    ./apps_update.sh
+    sudo reboot # password: analog
+    ```
+
+    For more details on the original system setup, see the [System Setup Guide](https://wiki.analog.com/resources/eval/user-guides/ad-3dsmartcam1-prz/ug_system_setup).
+
+
+4. **Interact via VNC**  
+    After rebooting, use VNC Viewer on your PC to connect to the camera. The Linux desktop will be displayed, providing shortcuts to demo and evaluation applications.
+
+    - If you do not have VNC Viewer installed, download it from the [RealVNC website](https://www.realvnc.com/en/connect/download/viewer/linux). For Linux, you can use the `.deb` package.
+
+    - Open VNC Viewer, select **File → New Connection**, and enter the camera's IP address (WiFi or Ethernet) as the host.
+
+    Example VNC connection:
+
+    ![VNC connect](./doc/3dsmartcam1/cam-setup/vnc%20connect.png)
+    ![VNC connect via Ethernet](./doc/3dsmartcam1/cam-setup/eth0-vnc.png)
+
+    Once connected, you will see the ADI Linux Desktop. Double-click the `aditof-demo.sh` shortcut to launch the demo application.
+
+    ![VNC desktop](./doc/3dsmartcam1/cam-setup/vnc-view.png)
+
+    The demo window will open with a 'Start' button. Click 'Start' to begin streaming depth, IR, and RGB video in separate windows, as shown below.
+
+    ![Demo application](./doc/3dsmartcam1/cam-setup/demo-app.png)
+
+    To stop the streams, click the **Stop** button. To close the demo completely, press <kbd>Ctrl</kbd>+<kbd>C</kbd> in the terminal.
+
+5. **Run the ROS application**
+
+    This SDK uses **ROS1 Melodic**. For more information on building and running ROS1 packages, refer to the [ROS1 Tutorials](http://wiki.ros.org/ROS/Tutorials).
+
+    The built ROS packages are located in the `build/catkin_ws` directory of your `aditof_sdk` workspace.
+
+    ```sh
+    cd ~/Workspace/aditof_sdk/build/catkin_ws
+    ```
+
+    Source the ROS environment and the workspace's `devel` setup script:
+
+    ```sh
+    source /opt/ros/melodic/setup.bash
+    source devel/setup.bash
+    ```
+
+    > **Note:** You need to source `devel/setup.bash` every time you open a new SSH terminal connection.
+
+    There are three launch files available:
+
+    - **camera_node.launch**  
+        Launches all camera nodes (depth, IR, RGB images, and point cloud), but does **not** start RViz automatically.
+
+        ```sh
+        roslaunch aditof_ros camera_node.launch
+        ```
+        To visualize the data, run RViz separately in another terminal:
+        ```sh
+        rosrun rviz rviz
+        ```   
+    - **rviz_publisher.launch**  
+        Launches the camera nodes and starts RViz for visualizing point cloud data and the transform (`tf`) from `base_link` to the published point cloud.
+
+        ```sh
+        roslaunch aditof_roscpp rviz_publisher.launch
+        ```
+
+    - **cam_pcl_rviz.launch**  
+        Launches the camera nodes (depth, IR, RGB images, point cloud, and `tf`) and starts RViz, allowing you to visualize all available data streams. Example visualization:
+
+        ![RViz view](./doc/3dsmartcam1/cam-setup/ros-view.png)
+
+        ```sh
+        roslaunch aditof_roscpp cam_pcl_rviz.launch
+        ```
+
+> **Note:** The `laur_dev` remote and forked repository ([laurent-19/aditof_sdk@v3.1.0](https://github.com/laurent-19/aditof_sdk/tree/v3.1.0)) include a bug fix for RGB image rendering in ROS/RViz. See the commit here: [analogdevicesinc/aditof_sdk@8807378](https://github.com/analogdevicesinc/aditof_sdk/commit/88073785902ccb1bc1a1978a54e5b9f50243a486).
+
+
+You can work in the `build/catkin_ws` directory just like in any standard ROS1 workspace.
+
+To view the topics published after launching a node, run:
+
+```sh
+rostopic list
+```
+
+![ROS Topics](./doc/3dsmartcam1/cam-setup/ros-topics.png)
+
+To **build** the workspace, use:
+
+```sh
+cd ~/Workspace/aditof_sdk/build/catkin_ws
+catkin_make
+```
+For more details on building and running the ROS nodes in the Aditof SDK, see the [ROS bindings documentation](https://github.com/analogdevicesinc/aditof_sdk/tree/main/bindings/ros).
+
+> **Note:** For the original documentation and more detailed system-level information for the 3DSMARTCAM1 device, refer to the [AD-3DSMARTCAM1-PRZ User Guide](https://wiki.analog.com/resources/eval/user-guides/ad-3dsmartcam1-prz) and the [System Setup Guide](https://wiki.analog.com/resources/eval/user-guides/ad-3dsmartcam1-prz/ug_system_setup).
+
 ### AD-FXTOF1-EBZ
 Platform details : [![Hardware](https://img.shields.io/badge/hardware-wiki-green.svg)](https://wiki.analog.com/resources/eval/user-guides/ad-fxtof1-ebz)
 
